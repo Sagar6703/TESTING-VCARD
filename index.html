@@ -178,6 +178,7 @@ h1{font-size:27px;line-height:1.15;margin:0 0 8px;font-weight:700;letter-spacing
 
   <div class="bottom">
     <button class="primary" id="saveBtn">Save Contact Data</button>
+    <button class="secondary" id="fallbackSaveBtn" style="width:100%;margin-top:10px">Alternative: Contact File</button>
     <div class="secondary-row">
       <button class="secondary" id="shareBtn">Share</button>
       <button class="secondary" id="copyBtn">Copy Link</button>
@@ -190,7 +191,7 @@ h1{font-size:27px;line-height:1.15;margin:0 0 8px;font-weight:700;letter-spacing
   <div class="modal">
     <button class="close" id="close">×</button>
     <h2>Save Contact</h2>
-    <p>If your browser does not support direct Contacts opening, use one of these alternatives.</p>
+    <p>If your Android browser cannot open the native Contacts screen, use the contact file instead.</p>
     <button class="accent" id="phoneSave">Download Contact File</button>
     <button id="emailShare">Send by Email</button>
   </div>
@@ -275,13 +276,15 @@ function makeVCard(){
   "END:VCARD"
  ].filter(Boolean).join("\r\n");
 }
-$("saveBtn").onclick=()=>{
+$("saveBtn").onclick=(event)=>{
+  event.preventDefault();
+
   /*
-   * Android: open the native Contacts "create contact" screen directly.
-   * This is an Android Intent URL, so the contact fields are pre-filled.
-   * It must be triggered by the user's tap (which this click handler is).
+   * Chrome's documented Android-intent mechanism works from a real user
+   * gesture and is most reliably invoked from an <a href>, not by a delayed
+   * JavaScript navigation. We create that anchor and click it immediately.
    */
-  const extras = [
+  const intentExtras = [
     ["name", fullName],
     ["phone", CONTACT.mobile],
     ["email", CONTACT.email],
@@ -290,26 +293,32 @@ $("saveBtn").onclick=()=>{
     ["postal", address]
   ];
 
-  const query = extras
+  const extras = intentExtras
     .filter(([,v]) => v)
     .map(([k,v]) => `S.${k}=${encodeURIComponent(v)}`)
     .join(";");
 
-  const androidIntent =
-    `intent://contacts/insert#Intent;action=android.intent.action.INSERT;` +
-    `type=vnd.android.cursor.dir/contact;${query};end`;
+  const intentUrl =
+    `intent://contacts/insert#Intent;` +
+    `action=android.intent.action.INSERT;` +
+    `type=vnd.android.cursor.dir/contact;` +
+    `${extras};` +
+    `end`;
 
-  // Chrome/Android handles the intent and opens the native contact editor.
-  window.location.href = androidIntent;
+  const a = document.createElement("a");
+  a.href = intentUrl;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 
-  // Keep the old vCard modal as a fallback if the browser does not support
-  // Android intent URLs. This timeout only runs if navigation did not happen.
-  setTimeout(()=>{
-    if (document.visibilityState === "visible") {
-      $("modal").classList.add("show");
-    }
-  }, 1200);
+  /*
+   * Do not automatically open the download modal. If the Android browser
+   * cannot resolve the native Contacts intent, the user can still use the
+   * visible fallback button below.
+   */
 };
+$("fallbackSaveBtn").onclick=()=>$("modal").classList.add("show");
 $("close").onclick=()=>$("modal").classList.remove("show");
 $("modal").onclick=e=>{if(e.target.id==="modal") $("modal").classList.remove("show")};
 
