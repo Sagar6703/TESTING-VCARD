@@ -280,11 +280,12 @@ $("saveBtn").onclick=(event)=>{
   event.preventDefault();
 
   /*
-   * Chrome's documented Android-intent mechanism works from a real user
-   * gesture and is most reliably invoked from an <a href>, not by a delayed
-   * JavaScript navigation. We create that anchor and click it immediately.
+   * Use Android's ContactsContract SHOW_OR_CREATE_CONTACT action.
+   * This is preferable to a raw download: Android itself owns the
+   * contact creation UI. The phone number is supplied as the data URI
+   * and the remaining fields are supplied as Intent extras.
    */
-  const intentExtras = [
+  const extras = [
     ["name", fullName],
     ["phone", CONTACT.mobile],
     ["email", CONTACT.email],
@@ -293,30 +294,27 @@ $("saveBtn").onclick=(event)=>{
     ["postal", address]
   ];
 
-  const extras = intentExtras
+  const extraString = extras
     .filter(([,v]) => v)
     .map(([k,v]) => `S.${k}=${encodeURIComponent(v)}`)
     .join(";");
 
   const intentUrl =
-    `intent://contacts/insert#Intent;` +
-    `action=android.intent.action.INSERT;` +
-    `type=vnd.android.cursor.dir/contact;` +
-    `${extras};` +
+    `intent://${encodeURIComponent(CONTACT.mobile)}#Intent;` +
+    `scheme=tel;` +
+    `action=com.android.contacts.action.SHOW_OR_CREATE_CONTACT;` +
+    `${extraString};` +
+    `S.com.android.contacts.extra.FORCE_CREATE=true;` +
     `end`;
 
   const a = document.createElement("a");
   a.href = intentUrl;
+  a.target = "_self";
+  a.rel = "noopener";
   a.style.display = "none";
   document.body.appendChild(a);
   a.click();
   a.remove();
-
-  /*
-   * Do not automatically open the download modal. If the Android browser
-   * cannot resolve the native Contacts intent, the user can still use the
-   * visible fallback button below.
-   */
 };
 $("fallbackSaveBtn").onclick=()=>$("modal").classList.add("show");
 $("close").onclick=()=>$("modal").classList.remove("show");
