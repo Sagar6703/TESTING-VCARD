@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f6f6">
 <title>Contact Card</title>
-<script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=UmuVYj0SfIk0IZVBrSMxsDbm9Qt8YCPHZciJ7fyjFO94qtluwTQXe-RP_RzvCga8b8JMj-jaNiVoDEOXVfj4OtqrLod-KnCzQeD03eQtW4WoJfSbfcf1qEm5Z7mYrW7aa4gT_N90uE1luZGl1bL8ZRKGV8qjbNjLl0b841279UiKu6gXiwwhrVG_6LeoX-0uRjAHderfapQVoTVtU5wpGTSs9r6T3mNOoTnrq1Rq7lmYWOSab1cW83kaiLLYC_hMSD0kvZamL48vbGjRM4m4gQ" charset="UTF-8"></script><style>
+<style>
 :root{
   --bg:#f3f3f3; --card:#fff; --text:#262626; --muted:#777;
   --accent:#f5a21a; --accent-dark:#df8f08; --line:#e8e8e8;
@@ -189,8 +189,8 @@ h1{font-size:27px;line-height:1.15;margin:0 0 8px;font-weight:700;letter-spacing
 <div class="modal-backdrop" id="modal">
   <div class="modal">
     <button class="close" id="close">×</button>
-    <h2>Save Contact</h2>
-    <p>Use your phone's contact or sharing options to save these details.</p>
+    <h2>How would you like to save contact data?</h2>
+    <p>Choose an option below.</p>
     <button class="accent" id="phoneSave">Save to My Phone</button>
     <button id="emailShare">Send by Email</button>
   </div>
@@ -320,41 +320,52 @@ function downloadVCard(){
   setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
 }
 
-async function saveContact(){
+function saveContact(){
   if(isIOS){
-    // Keep the working iOS behavior.
+    // iPhone/iPad: keep the hosted vCard workflow.
     window.location.href = VCF_URL;
     return;
   }
 
   if(isAndroid){
-    try{
-      const vcard = new File(
-        [makeVCard()],
-        "Abhishek_Patil.vcf",
-        {type:"text/vcard;charset=utf-8"}
-      );
+    const e = value => encodeURIComponent(value || "");
+    const postal = [CONTACT.venue,
+                    [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
+                    [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
+                    CONTACT.country].filter(Boolean).join(", ");
 
-      // Share the vCard through Android's native system share sheet.
-      if(navigator.share && navigator.canShare && navigator.canShare({files:[vcard]})){
-        await navigator.share({
-          title: "Abhishek Patil",
-          text: "Contact details",
-          files: [vcard]
-        });
-        return;
-      }
-    }catch(err){
-      // User cancellation should not trigger a second action.
-      if(err && err.name === "AbortError") return;
-    }
+    /*
+     * Android's Contacts app officially accepts ACTION_INSERT with
+     * vnd.android.cursor.dir/raw_contact. This variant follows the
+     * browser-intent form used for Android contact creation and is
+     * intentionally tested without any VCF fallback.
+     */
+    let intent =
+      "intent://vnd.android.cursor.dir/raw_contact/#Intent;" +
+      "action=android.intent.action.INSERT;" +
+      "type=vnd.android.cursor.dir/raw_contact;";
 
-    // If file sharing is unavailable, navigate to the hosted VCF.
-    window.location.href = VCF_URL;
+    intent += `S.name=${e(fullName)};`;
+    if(CONTACT.mobile) intent += `S.phone=${e(CONTACT.mobile)};`;
+    if(CONTACT.email) intent += `S.email=${e(CONTACT.email)};`;
+    if(CONTACT.company) intent += `S.company=${e(CONTACT.company)};`;
+    if(CONTACT.job) intent += `S.job_title=${e(CONTACT.job)};`;
+    if(postal) intent += `S.postal=${e(postal)};`;
+
+    intent += "end";
+
+    // Direct user-gesture navigation.
+    const a = document.createElement("a");
+    a.href = intent;
+    a.target = "_self";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     return;
   }
 
-  // Desktop / other browsers.
+  // Desktop / other browsers: hosted vCard.
   window.location.href = VCF_URL;
 }
 $("saveBtn").onclick = saveContact;
