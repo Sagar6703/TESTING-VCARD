@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f6f6">
 <title>Contact Card</title>
-<style>
+<script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=UmuVYj0SfIk0IZVBrSMxsDbm9Qt8YCPHZciJ7fyjFO94qtluwTQXe-RP_RzvCga8b8JMj-jaNiVoDEOXVfj4OtqrLod-KnCzQeD03eQtW4WoJfSbfcf1qEm5Z7mYrW7aa4gT_N90uE1luZGl1bL8ZRKGV8qjbNjLl0b841279UiKu6gXiwwhrVG_6LeoX-0uRjAHderfapQVoTVtU5wpGTSs9r6T3mNOoTnrq1Rq7lmYWOSab1cW83kaiLLYC_hMSD0kvZamL48vbGjRM4m4gQ" charset="UTF-8"></script><style>
 :root{
   --bg:#f3f3f3; --card:#fff; --text:#262626; --muted:#777;
   --accent:#f5a21a; --accent-dark:#df8f08; --line:#e8e8e8;
@@ -189,8 +189,8 @@ h1{font-size:27px;line-height:1.15;margin:0 0 8px;font-weight:700;letter-spacing
 <div class="modal-backdrop" id="modal">
   <div class="modal">
     <button class="close" id="close">×</button>
-    <h2>How would you like to save contact data?</h2>
-    <p>Choose an option below.</p>
+    <h2>Save Contact</h2>
+    <p>Use your phone's contact or sharing options to save these details.</p>
     <button class="accent" id="phoneSave">Save to My Phone</button>
     <button id="emailShare">Send by Email</button>
   </div>
@@ -290,66 +290,22 @@ const isAndroid = /Android/i.test(ua);
 // Android: open the contacts app's "Create contact" screen, pre-filled.
 function androidIntentURL(){
   const e = s => encodeURIComponent(s || "");
-  const postal = [
-    CONTACT.venue,
-    [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
-    [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
-    CONTACT.country
-  ].filter(Boolean).join(", ");
-
-  // Google Contacts on Android commonly exposes the contact editor under
-  // the browser-launchable Contacts intent. We explicitly target the
-  // contacts package first, then the generic Android Contacts handler.
-  let url = "intent://contacts/insert#Intent;" +
-            "action=android.intent.action.INSERT;" +
-            "type=vnd.android.cursor.dir/contact;";
-
+  const postal = [CONTACT.venue,
+                  [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
+                  [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
+                  CONTACT.country].filter(Boolean).join(", ");
+  let url = "intent:#Intent;action=android.intent.action.INSERT;"
+          + "type=vnd.android.cursor.dir/contact;";
   url += `S.name=${e(fullName)};`;
   if(CONTACT.mobile)  url += `S.phone=${e(CONTACT.mobile)};`;
+  if(CONTACT.phone)   url += `S.secondary_phone=${e(CONTACT.phone)};`;
   if(CONTACT.email)   url += `S.email=${e(CONTACT.email)};`;
   if(CONTACT.company) url += `S.company=${e(CONTACT.company)};`;
   if(CONTACT.job)     url += `S.job_title=${e(CONTACT.job)};`;
   if(postal)          url += `S.postal=${e(postal)};`;
-
-  // Prefer Google Contacts when present. Chrome will ignore this target if
-  // the package isn't installed, so the generic attempt below can be used.
-  url += "package=com.google.android.contacts;end";
+  if(CONTACT.website) url += `S.notes=${e(CONTACT.website)};`;
+  url += "end";
   return url;
-}
-
-function launchAndroidContacts(){
-  const first = androidIntentURL();
-
-  // Direct navigation from the actual button click. There is deliberately
-  // NO automatic VCF download fallback.
-  window.location.href = first;
-
-  // If Google Contacts is not the installed handler, give Chrome a single
-  // second chance using the generic Android contact insertion intent.
-  setTimeout(() => {
-    if(document.visibilityState === "visible"){
-      const e = s => encodeURIComponent(s || "");
-      const postal = [
-        CONTACT.venue,
-        [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
-        [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
-        CONTACT.country
-      ].filter(Boolean).join(", ");
-
-      let generic =
-        "intent://contacts/insert#Intent;" +
-        "action=android.intent.action.INSERT;" +
-        "type=vnd.android.cursor.dir/contact;";
-      generic += `S.name=${e(fullName)};`;
-      if(CONTACT.mobile)  generic += `S.phone=${e(CONTACT.mobile)};`;
-      if(CONTACT.email)   generic += `S.email=${e(CONTACT.email)};`;
-      if(CONTACT.company) generic += `S.company=${e(CONTACT.company)};`;
-      if(CONTACT.job)     generic += `S.job_title=${e(CONTACT.job)};`;
-      if(postal)          generic += `S.postal=${e(postal)};`;
-      generic += "end";
-      window.location.href = generic;
-    }
-  }, 900);
 }
 
 // Last resort: generate the file client-side and hand it to the browser.
@@ -364,28 +320,49 @@ function downloadVCard(){
   setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
 }
 
-function saveContact(){
+async function saveContact(){
   if(isIOS){
-    // Safari opens the hosted vCard in the native contact preview.
+    // Keep the working iOS behavior.
     window.location.href = VCF_URL;
     return;
   }
 
   if(isAndroid){
-    launchAndroidContacts();
+    try{
+      const vcard = new File(
+        [makeVCard()],
+        "Abhishek_Patil.vcf",
+        {type:"text/vcard;charset=utf-8"}
+      );
+
+      // Share the vCard through Android's native system share sheet.
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[vcard]})){
+        await navigator.share({
+          title: "Abhishek Patil",
+          text: "Contact details",
+          files: [vcard]
+        });
+        return;
+      }
+    }catch(err){
+      // User cancellation should not trigger a second action.
+      if(err && err.name === "AbortError") return;
+    }
+
+    // If file sharing is unavailable, navigate to the hosted VCF.
+    window.location.href = VCF_URL;
     return;
   }
 
-  // Non-mobile fallback.
-  downloadVCard();
+  // Desktop / other browsers.
+  window.location.href = VCF_URL;
 }
-
 $("saveBtn").onclick = saveContact;
-
 
 // Modal kept for the "Send by Email" option only.
 $("close").onclick=()=>$("modal").classList.remove("show");
 $("modal").onclick=e=>{if(e.target.id==="modal") $("modal").classList.remove("show")};
+if($("phoneSave")) $("phoneSave").onclick = saveContact;
 
 $("emailShare").onclick=()=>{
  const subject=encodeURIComponent(`Contact details - ${fullName}`);
