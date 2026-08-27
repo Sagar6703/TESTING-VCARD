@@ -322,52 +322,34 @@ function downloadVCard(){
 
 function saveContact(){
   if(isIOS){
-    // iPhone/iPad: keep the hosted vCard workflow.
+    // Safari opens this in the native contact preview with "Add to Contacts".
     window.location.href = VCF_URL;
     return;
   }
 
   if(isAndroid){
-    const e = value => encodeURIComponent(value || "");
-    const postal = [CONTACT.venue,
-                    [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
-                    [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
-                    CONTACT.country].filter(Boolean).join(", ");
+    // If the intent fires, the page goes to the background and we cancel
+    // the fallback. If nothing handles it (Firefox, in-app webviews),
+    // we quietly download the .vcf instead.
+    let handled = false;
+    const onHide = () => { if(document.hidden) handled = true; };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
 
-    /*
-     * Android's Contacts app officially accepts ACTION_INSERT with
-     * vnd.android.cursor.dir/raw_contact. This variant follows the
-     * browser-intent form used for Android contact creation and is
-     * intentionally tested without any VCF fallback.
-     */
-    let intent =
-      "intent://vnd.android.cursor.dir/raw_contact/#Intent;" +
-      "action=android.intent.action.INSERT;" +
-      "type=vnd.android.cursor.dir/raw_contact;";
+    window.location.href = androidIntentURL();
 
-    intent += `S.name=${e(fullName)};`;
-    if(CONTACT.mobile) intent += `S.phone=${e(CONTACT.mobile)};`;
-    if(CONTACT.email) intent += `S.email=${e(CONTACT.email)};`;
-    if(CONTACT.company) intent += `S.company=${e(CONTACT.company)};`;
-    if(CONTACT.job) intent += `S.job_title=${e(CONTACT.job)};`;
-    if(postal) intent += `S.postal=${e(postal)};`;
-
-    intent += "end";
-
-    // Direct user-gesture navigation.
-    const a = document.createElement("a");
-    a.href = intent;
-    a.target = "_self";
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    setTimeout(() => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      if(!handled && !document.hidden) downloadVCard();
+    }, 1200);
     return;
   }
 
-  // Desktop / other browsers: hosted vCard.
-  window.location.href = VCF_URL;
+  // Desktop and everything else.
+  downloadVCard();
 }
+
 $("saveBtn").onclick = saveContact;
 
 // Modal kept for the "Send by Email" option only.
