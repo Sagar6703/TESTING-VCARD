@@ -290,22 +290,66 @@ const isAndroid = /Android/i.test(ua);
 // Android: open the contacts app's "Create contact" screen, pre-filled.
 function androidIntentURL(){
   const e = s => encodeURIComponent(s || "");
-  const postal = [CONTACT.venue,
-                  [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
-                  [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
-                  CONTACT.country].filter(Boolean).join(", ");
-  let url = "intent:#Intent;action=android.intent.action.INSERT;"
-          + "type=vnd.android.cursor.dir/contact;";
+  const postal = [
+    CONTACT.venue,
+    [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
+    [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
+    CONTACT.country
+  ].filter(Boolean).join(", ");
+
+  // Google Contacts on Android commonly exposes the contact editor under
+  // the browser-launchable Contacts intent. We explicitly target the
+  // contacts package first, then the generic Android Contacts handler.
+  let url = "intent://contacts/insert#Intent;" +
+            "action=android.intent.action.INSERT;" +
+            "type=vnd.android.cursor.dir/contact;";
+
   url += `S.name=${e(fullName)};`;
   if(CONTACT.mobile)  url += `S.phone=${e(CONTACT.mobile)};`;
-  if(CONTACT.phone)   url += `S.secondary_phone=${e(CONTACT.phone)};`;
   if(CONTACT.email)   url += `S.email=${e(CONTACT.email)};`;
   if(CONTACT.company) url += `S.company=${e(CONTACT.company)};`;
   if(CONTACT.job)     url += `S.job_title=${e(CONTACT.job)};`;
   if(postal)          url += `S.postal=${e(postal)};`;
-  if(CONTACT.website) url += `S.notes=${e(CONTACT.website)};`;
-  url += "end";
+
+  // Prefer Google Contacts when present. Chrome will ignore this target if
+  // the package isn't installed, so the generic attempt below can be used.
+  url += "package=com.google.android.contacts;end";
   return url;
+}
+
+function launchAndroidContacts(){
+  const first = androidIntentURL();
+
+  // Direct navigation from the actual button click. There is deliberately
+  // NO automatic VCF download fallback.
+  window.location.href = first;
+
+  // If Google Contacts is not the installed handler, give Chrome a single
+  // second chance using the generic Android contact insertion intent.
+  setTimeout(() => {
+    if(document.visibilityState === "visible"){
+      const e = s => encodeURIComponent(s || "");
+      const postal = [
+        CONTACT.venue,
+        [CONTACT.street, CONTACT.streetNumber].filter(Boolean).join(" "),
+        [CONTACT.city, CONTACT.state, CONTACT.zip].filter(Boolean).join(", "),
+        CONTACT.country
+      ].filter(Boolean).join(", ");
+
+      let generic =
+        "intent://contacts/insert#Intent;" +
+        "action=android.intent.action.INSERT;" +
+        "type=vnd.android.cursor.dir/contact;";
+      generic += `S.name=${e(fullName)};`;
+      if(CONTACT.mobile)  generic += `S.phone=${e(CONTACT.mobile)};`;
+      if(CONTACT.email)   generic += `S.email=${e(CONTACT.email)};`;
+      if(CONTACT.company) generic += `S.company=${e(CONTACT.company)};`;
+      if(CONTACT.job)     generic += `S.job_title=${e(CONTACT.job)};`;
+      if(postal)          generic += `S.postal=${e(postal)};`;
+      generic += "end";
+      window.location.href = generic;
+    }
+  }, 900);
 }
 
 // Last resort: generate the file client-side and hand it to the browser.
@@ -322,40 +366,26 @@ function downloadVCard(){
 
 function saveContact(){
   if(isIOS){
-    // Safari opens this in the native contact preview with "Add to Contacts".
+    // Safari opens the hosted vCard in the native contact preview.
     window.location.href = VCF_URL;
     return;
   }
 
   if(isAndroid){
-    // If the intent fires, the page goes to the background and we cancel
-    // the fallback. If nothing handles it (Firefox, in-app webviews),
-    // we quietly download the .vcf instead.
-    let handled = false;
-    const onHide = () => { if(document.hidden) handled = true; };
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", onHide);
-
-    window.location.href = androidIntentURL();
-
-    setTimeout(() => {
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", onHide);
-      if(!handled && !document.hidden) downloadVCard();
-    }, 1200);
+    launchAndroidContacts();
     return;
   }
 
-  // Desktop and everything else.
+  // Non-mobile fallback.
   downloadVCard();
 }
 
 $("saveBtn").onclick = saveContact;
 
+
 // Modal kept for the "Send by Email" option only.
 $("close").onclick=()=>$("modal").classList.remove("show");
 $("modal").onclick=e=>{if(e.target.id==="modal") $("modal").classList.remove("show")};
-if($("phoneSave")) $("phoneSave").onclick = saveContact;
 
 $("emailShare").onclick=()=>{
  const subject=encodeURIComponent(`Contact details - ${fullName}`);
